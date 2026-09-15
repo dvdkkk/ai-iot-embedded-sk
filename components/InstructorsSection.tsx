@@ -48,7 +48,7 @@ export const InstructorsSection: React.FC = () => {
       name: "송명규",
       title: "최상위권 스펙의 IT 전문 강사",
       subtitle: "최고의 실무 경력을 가진 IT 일타 강사!\n전문가 조차 모르는 실무 알려드리겠습니다",
-      image: "https://postfiles.pstatic.net/MjAyNjAzMTJfMjkz/MDAxNzczMjg5MTA2MTU3.8Mzn_uQy6-ci2n8yqztyyT_g5_5AASDfpCPjE35G2zEg.FUpuS6uLbtTri36Xmmp3OSMZafh3NdTcYKnuEe_MO9Yg.JPEG/%EC%86%A1%EB%AA%85%EA%B7%9C%EA%B0%95%EC%82%AC.jpg?type=w966",
+      image: "https://postfiles.pstatic.net/MjAyNjAzMTJfNTgg/MDAxNzczMjk1MDMwMjM2.Vx5ZR8vecyy6aTm0SR5kvonsBNN0lNSO1oI7_fGC2bwg.cQH69XmBeQEX8m3kLiJAuhMzbu_KY39VEP62Pd5t388g.JPEG/SE-8541b277-2ff2-482b-b3d5-efe832b1012b.jpg?type=w966",
       experience: [
         "(주)아이준 - 방사능&지진 모니터링 시스템 개발",
         "(주)세드나 - 무선화재 감지기 개발",
@@ -105,13 +105,24 @@ export const InstructorsSection: React.FC = () => {
               <div className="flex flex-col md:flex-row h-full">
                 
                 {/* Image Section */}
-                <div className="md:w-2/5 relative overflow-hidden bg-zinc-900/50 md:bg-zinc-800">
+                <div className="md:w-2/5 relative overflow-hidden bg-zinc-900/50 md:bg-zinc-800 flex items-center justify-center min-h-[280px]">
                   <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent z-10 md:bg-gradient-to-r"></div>
                   <img 
                     src={instructor.image} 
                     alt={`강사 ${instructor.name}`} 
                     className="w-full h-auto max-h-80 md:max-h-none md:h-full object-contain object-top md:object-cover md:object-center transition-all duration-700 scale-105 group-hover:scale-100"
                     referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      target.style.display = 'none';
+                      const parent = target.parentElement;
+                      if (parent && !parent.querySelector('.fallback-profile')) {
+                        const fallback = document.createElement('div');
+                        fallback.className = 'fallback-profile flex flex-col items-center justify-center p-8 text-zinc-500 h-full w-full absolute inset-0 bg-zinc-900';
+                        fallback.innerHTML = `<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mb-2 text-purple-800/60"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg><span class="text-xs font-bold text-zinc-400">${instructor.name} 강사</span>`;
+                        parent.appendChild(fallback);
+                      }
+                    }}
                   />
                   <div className="absolute bottom-4 left-4 z-20 md:bottom-auto md:top-4">
                     <div className="bg-purple-800 text-white text-xs font-bold px-3 py-1 rounded-full inline-block">
