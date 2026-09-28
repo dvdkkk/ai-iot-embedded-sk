@@ -58,11 +58,9 @@ export const Hero: React.FC = () => {
             {/* Action Buttons */}
             <div className="flex flex-wrap gap-4 pt-2">
               <a
-                href="#consultation"
-                onClick={(e) => {
-                  e.preventDefault();
-                  document.getElementById('consultation')?.scrollIntoView({ behavior: 'smooth' });
-                }}
+                href="https://naver.me/GyYmEEvT"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="inline-flex items-center gap-3 bg-purple-800 hover:bg-purple-700 text-black font-black px-8 py-4 rounded-2xl text-base transition-all hover:scale-105 shadow-[0_0_30px_rgba(107,33,168,0.4)]"
               >
                 무료 상담 신청하기

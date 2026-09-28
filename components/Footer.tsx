@@ -1,7 +1,16 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 export const Footer: React.FC = () => {
+  const [isMobile, setIsMobile] = useState(false);
+
   useEffect(() => {
+    const checkMobile = () => {
+      const mobileUa = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      setIsMobile(mobileUa || window.innerWidth < 1024);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+
     // 리포트2.0 로그분석코드 시작
     const sTime = new Date().getTime();
     (function(i: any, s: any, o: any, g: any, r: any, a?: any, m?: any){
@@ -14,7 +23,22 @@ export const Footer: React.FC = () => {
       m.parentNode.insertBefore(a,m)
     })(window,document,'script','//nayang81.weblog.cafe24.com/weblog.js?v='+sTime,'nayang81_9');
     // 리포트2.0 로그분석코드 완료
+
+    return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  const handlePhoneClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!isMobile) {
+      e.preventDefault();
+      const link = document.createElement('a');
+      link.href = "https://naver.me/GyYmEEvT";
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
 
   return (
     <footer className="bg-black text-zinc-500 py-6 border-t border-zinc-900 text-sm">
@@ -30,8 +54,12 @@ export const Footer: React.FC = () => {
             <div className="md:text-right">
                 <p className="font-bold text-zinc-400 mb-2">고객센터</p>
                 <a 
-                  href="tel:16618126" 
-                  className="text-2xl font-bold text-white hover:text-purple-800 transition-colors md:pointer-events-none md:cursor-default md:hover:text-white inline-block"
+                  href={isMobile ? "tel:16618126" : "https://naver.me/GyYmEEvT"}
+                  target={isMobile ? undefined : "_blank"}
+                  rel={isMobile ? undefined : "noopener noreferrer"}
+                  onClick={handlePhoneClick}
+                  className="text-2xl font-bold text-white hover:text-purple-400 transition-colors inline-block"
+                  title={isMobile ? "전화 걸기" : "상담신청 바로가기 (새창)"}
                 >
                   1661-8126
                 </a>
