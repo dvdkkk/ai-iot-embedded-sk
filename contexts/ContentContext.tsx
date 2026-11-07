@@ -81,17 +81,138 @@ interface ContentContextType {
   resetContent: () => void;
 }
 
+import Papa from 'papaparse';
+
+// Storage keys
+const STORAGE_KEY = 'site_content_v13';
+const SHEET_URL_KEY = 'google_sheet_url';
+
+interface SheetFetchStatus {
+  isLoading: boolean;
+  lastUpdated: string | null;
+  error: string | null;
+  sheetUrl: string;
+}
+
+interface ContentContextType {
+  content: SiteContent;
+  updateContent: (newContent: SiteContent) => void;
+  resetContent: () => void;
+  sheetStatus: SheetFetchStatus;
+  setSheetUrl: (url: string) => Promise<boolean>;
+  refreshSheetData: () => Promise<boolean>;
+}
+
 const ContentContext = createContext<ContentContextType | undefined>(undefined);
-
-// Google Sheet URL or published CSV URL if provided.
-// Can be set via window.__GOOGLE_SHEET_URL__ or localStorage or default.
-const GOOGLE_SHEET_CSV_URL = (typeof window !== 'undefined' && (window as any).__GOOGLE_SHEET_CSV_URL__) || '';
-
-const STORAGE_KEY = 'site_content_v12';
 
 export const ContentProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [content, setContent] = useState<SiteContent>(defaultContent);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [sheetStatus, setSheetStatus] = useState<SheetFetchStatus>({
+    isLoading: false,
+    lastUpdated: null,
+    error: null,
+    sheetUrl: typeof window !== 'undefined' ? (localStorage.getItem(SHEET_URL_KEY) || '') : '',
+  });
+
+  // Function to fetch and parse Google Sheet CSV using PapaParse
+  const fetchAndParseSheet = async (url: string): Promise<boolean> => {
+    if (!url || !url.trim()) return false;
+
+    setSheetStatus(prev => ({ ...prev, isLoading: true, error: null, sheetUrl: url }));
+
+    try {
+      // Use Papa.parse with download: true or fetch + Papa.parse
+      const response = await fetch(url.trim(), { cache: 'no-cache' });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: 시트 데이터를 가져올 수 없습니다.`);
+      }
+
+      const csvText = await response.text();
+
+      return new Promise<boolean>((resolve) => {
+        Papa.parse<string[]>(csvText, {
+          skipEmptyLines: false, // keep empty rows for exact D4 index mapping
+          complete: (results) => {
+            const data = results.data;
+            if (!data || data.length === 0) {
+              setSheetStatus(prev => ({ ...prev, isLoading: false, error: '시트 데이터가 비어 있습니다.' }));
+              resolve(false);
+              return;
+            }
+
+            // Cell D4 in spreadsheet coordinates:
+            // Row 4 -> index 3 (0-indexed: 0=Row 1, 1=Row 2, 2=Row 3, 3=Row 4)
+            // Column D -> index 3 (0-indexed: 0=A, 1=B, 2=C, 3=D)
+            let d4Value = '';
+
+            if (data[3] && data[3][3] !== undefined && data[3][3].trim()) {
+              d4Value = data[3][3].trim();
+            } else {
+              // Smart fallback: find row with course keywords
+              const matchedRow = data.find(row =>
+                Array.isArray(row) && row.some(cell => typeof cell === 'string' && (cell.includes('AI사물인터넷') || cell.includes('임베디드')))
+              );
+              if (matchedRow && matchedRow.length >= 4 && matchedRow[3]?.trim()) {
+                d4Value = matchedRow[3].trim();
+              } else if (matchedRow && matchedRow[matchedRow.length - 1]?.trim()) {
+                d4Value = matchedRow[matchedRow.length - 1].trim();
+              }
+            }
+
+            if (d4Value) {
+              setContent(prev => {
+                const updatedStats = [...prev.hero.stats];
+                const periodIdx = updatedStats.findIndex(s => s.label === '교육기간');
+                if (periodIdx !== -1) {
+                  updatedStats[periodIdx] = { ...updatedStats[periodIdx], value: d4Value };
+                } else {
+                  updatedStats[0] = { ...updatedStats[0], value: d4Value };
+                }
+
+                const newContent = {
+                  ...prev,
+                  hero: {
+                    ...prev.hero,
+                    stats: updatedStats,
+                  },
+                };
+
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(newContent));
+                return newContent;
+              });
+
+              setSheetStatus({
+                isLoading: false,
+                lastUpdated: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                error: null,
+                sheetUrl: url,
+              });
+              resolve(true);
+            } else {
+              setSheetStatus(prev => ({
+                ...prev,
+                isLoading: false,
+                error: 'D4 셀에서 개강일 값을 찾을 수 없습니다.',
+              }));
+              resolve(false);
+            }
+          },
+          error: (error: Error) => {
+            setSheetStatus(prev => ({ ...prev, isLoading: false, error: error.message }));
+            resolve(false);
+          }
+        });
+      });
+    } catch (err: any) {
+      setSheetStatus(prev => ({
+        ...prev,
+        isLoading: false,
+        error: err?.message || '시트 데이터를 가져오는 중 오류가 발생했습니다.',
+      }));
+      return false;
+    }
+  };
 
   useEffect(() => {
     // 1. Initial state from defaults / localStorage
@@ -105,57 +226,32 @@ export const ContentProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     }
 
-    // 2. Dynamic fetch from Google Sheet (if URL is set in localStorage or window)
-    const sheetUrl = localStorage.getItem('google_sheet_url') || GOOGLE_SHEET_CSV_URL;
-    if (sheetUrl) {
-      fetch(sheetUrl)
-        .then((res) => res.text())
-        .then((csvText) => {
-          // Parse CSV: rows and columns
-          const rows = csvText.split(/\r?\n/).map((row) =>
-            row.split(',').map((cell) => cell.trim().replace(/^"|"$/g, ''))
-          );
-          // Look for D4 (row index 3, column index 3 -> 0-based) or find by course name
-          // If row 3 has at least 4 columns (A=0, B=1, C=2, D=3):
-          let d4Value = '';
-          if (rows[3] && rows[3][3]) {
-            d4Value = rows[3][3];
-          } else {
-            // Find row containing 'AI사물인터넷'
-            const targetRow = rows.find(r => r.some(cell => cell.includes('AI사물인터넷') || cell.includes('임베디드')));
-            if (targetRow && targetRow.length >= 4) {
-              d4Value = targetRow[3] || targetRow[targetRow.length - 1];
-            }
-          }
-
-          if (d4Value) {
-            setContent((prev) => {
-              const updatedStats = [...prev.hero.stats];
-              const periodIdx = updatedStats.findIndex((s) => s.label === '교육기간');
-              if (periodIdx !== -1) {
-                updatedStats[periodIdx] = { ...updatedStats[periodIdx], value: d4Value };
-              } else {
-                updatedStats[0] = { ...updatedStats[0], value: d4Value };
-              }
-              const newContent = {
-                ...prev,
-                hero: {
-                  ...prev.hero,
-                  stats: updatedStats
-                }
-              };
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(newContent));
-              return newContent;
-            });
-          }
-        })
-        .catch((err) => {
-          console.warn('Google Sheets live fetch error:', err);
-        });
+    // 2. Dynamic fetch on page load/refresh if sheetUrl is configured
+    const savedSheetUrl = localStorage.getItem(SHEET_URL_KEY);
+    if (savedSheetUrl) {
+      fetchAndParseSheet(savedSheetUrl);
     }
 
     setIsLoaded(true);
   }, []);
+
+  const setSheetUrl = async (url: string): Promise<boolean> => {
+    const trimmed = url.trim();
+    localStorage.setItem(SHEET_URL_KEY, trimmed);
+    setSheetStatus(prev => ({ ...prev, sheetUrl: trimmed }));
+    if (trimmed) {
+      return await fetchAndParseSheet(trimmed);
+    }
+    return true;
+  };
+
+  const refreshSheetData = async (): Promise<boolean> => {
+    const currentUrl = localStorage.getItem(SHEET_URL_KEY);
+    if (currentUrl) {
+      return await fetchAndParseSheet(currentUrl);
+    }
+    return false;
+  };
 
   const updateContent = (newContent: SiteContent) => {
     setContent(newContent);
@@ -172,7 +268,7 @@ export const ContentProvider: React.FC<{ children: ReactNode }> = ({ children })
   if (!isLoaded) return null;
 
   return (
-    <ContentContext.Provider value={{ content, updateContent, resetContent }}>
+    <ContentContext.Provider value={{ content, updateContent, resetContent, sheetStatus, setSheetUrl, refreshSheetData }}>
       {children}
     </ContentContext.Provider>
   );

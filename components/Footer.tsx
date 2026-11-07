@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { SheetSettingsModal } from './SheetSettingsModal';
 
 export const Footer: React.FC = () => {
   const [isMobile, setIsMobile] = useState(false);
@@ -73,8 +74,9 @@ export const Footer: React.FC = () => {
                 <p>사업자등록번호 : 119-81-54852</p>
                 <p>개인정보보호책임자 : 김진철</p>
             </div>
-            <div className="flex justify-between items-center mt-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mt-4">
                 <p className="text-zinc-600">Copyright ⓒ 한국직업능력교육원 안산 All rights reserved.</p>
+                <SheetSettingsModal />
             </div>
         </div>
       </div>
