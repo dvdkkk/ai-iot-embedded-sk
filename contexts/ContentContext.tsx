@@ -88,27 +88,72 @@ const GOOGLE_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR
 
 const STORAGE_KEY = 'site_content_v13';
 
-// Helper to parse standard CSV text (handling quotes and commas)
+// RFC 4180 compliant CSV parser for accurately extracting cells with quotes, commas and newlines
 function parseCSV(text: string): string[][] {
-  const lines = text.split(/\r?\n/).filter(line => line.length > 0);
-  return lines.map(line => {
-    const row: string[] = [];
-    let insideQuote = false;
-    let entry = '';
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      if (char === '"') {
-        insideQuote = !insideQuote;
-      } else if (char === ',' && !insideQuote) {
-        row.push(entry.trim());
-        entry = '';
+  const result: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  let i = 0;
+
+  while (i < text.length) {
+    const c = text[i];
+    const next = text[i + 1];
+
+    if (inQuotes) {
+      if (c === '"') {
+        if (next === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        } else {
+          inQuotes = false;
+          i++;
+          continue;
+        }
       } else {
-        entry += char;
+        field += c;
+        i++;
+        continue;
+      }
+    } else {
+      if (c === '"') {
+        inQuotes = true;
+        i++;
+        continue;
+      } else if (c === ',') {
+        row.push(field.trim());
+        field = '';
+        i++;
+        continue;
+      } else if (c === '\r' && next === '\n') {
+        row.push(field.trim());
+        result.push(row);
+        row = [];
+        field = '';
+        i += 2;
+        continue;
+      } else if (c === '\n' || c === '\r') {
+        row.push(field.trim());
+        result.push(row);
+        row = [];
+        field = '';
+        i++;
+        continue;
+      } else {
+        field += c;
+        i++;
+        continue;
       }
     }
-    row.push(entry.trim());
-    return row;
-  });
+  }
+
+  if (field || row.length > 0) {
+    row.push(field.trim());
+    result.push(row);
+  }
+
+  return result;
 }
 
 export const ContentProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -127,26 +172,38 @@ export const ContentProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     }
 
-    // 2. Fetch live data from Google Sheets CSV on every page load / refresh
+    // 2. Fetch live data from Google Sheets CSV on every page load / refresh (F5)
+    // Guarantee no browser or intermediate cache using &_t=timestamp and cache: 'no-store'
     const fetchLiveSheet = async () => {
       try {
-        // Append cache-busting timestamp to guarantee real-time updates on refresh
-        const urlWithCacheBuster = `${GOOGLE_SHEET_CSV_URL}&t=${Date.now()}`;
-        const response = await fetch(urlWithCacheBuster, { cache: 'no-store' });
+        const urlWithCacheBuster = `${GOOGLE_SHEET_CSV_URL}&_t=${Date.now()}`;
+        const response = await fetch(urlWithCacheBuster, {
+          cache: 'no-store',
+          headers: {
+            'Pragma': 'no-cache',
+            'Cache-Control': 'no-cache'
+          }
+        });
         if (!response.ok) return;
 
         const csvText = await response.text();
         const rows = parseCSV(csvText);
 
-        // Find D4: Row 4 (index 3), Column D (index 3)
-        // Also fallback to scanning for row containing 'AI사물인터넷' or '임베디드'
+        // Cell D4 is Row 4 (index 3), Column D (index 3)
+        // [
+        //   Row 1 (index 0): ['', '', '', ''],
+        //   Row 2 (index 1): ['', '홈페이지 개강일 변경 시트', '', ''],
+        //   Row 3 (index 2): ['', '기관명', '과정명', '개강일'],
+        //   Row 4 (index 3): ['', '한직교', 'AI사물인터넷 MCU기반...', '26.12.22개강(6개월과정)'] <- D4
+        // ]
         let d4Value = '';
-        if (rows[3] && rows[3][3] && rows[3][3].trim()) {
+        if (rows[3] && rows[3].length >= 4 && rows[3][3].trim()) {
           d4Value = rows[3][3].trim();
         } else {
+          // Fallback search: find row matching the course name
           const matchRow = rows.find(r => r.some(cell => cell.includes('AI사물인터넷') || cell.includes('임베디드')));
-          if (matchRow) {
-            d4Value = matchRow[3] || matchRow[matchRow.length - 1] || '';
+          if (matchRow && matchRow.length >= 4) {
+            d4Value = matchRow[3]?.trim() || '';
           }
         }
 
