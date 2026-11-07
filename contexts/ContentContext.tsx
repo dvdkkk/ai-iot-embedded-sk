@@ -166,6 +166,7 @@ export const ContentProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (savedContent) {
       try {
         const parsed = JSON.parse(savedContent);
+        // Ensure education period starts fresh and is strictly updated by live D4
         setContent({ ...defaultContent, ...parsed });
       } catch (e) {
         console.error("Failed to load content", e);
@@ -189,18 +190,13 @@ export const ContentProvider: React.FC<{ children: ReactNode }> = ({ children })
         const csvText = await response.text();
         const rows = parseCSV(csvText);
 
-        // Cell D4 is Row 4 (index 3), Column D (index 3)
-        // [
-        //   Row 1 (index 0): ['', '', '', ''],
-        //   Row 2 (index 1): ['', '홈페이지 개강일 변경 시트', '', ''],
-        //   Row 3 (index 2): ['', '기관명', '과정명', '개강일'],
-        //   Row 4 (index 3): ['', '한직교', 'AI사물인터넷 MCU기반...', '26.12.22개강(6개월과정)'] <- D4
-        // ]
+        // Cell D4 is exactly Row 4 (index 3), Column D (index 3)
+        // Only extract the current live value of D4. Discard any previous or cached values.
         let d4Value = '';
         if (rows[3] && rows[3].length >= 4 && rows[3][3].trim()) {
           d4Value = rows[3][3].trim();
         } else {
-          // Fallback search: find row matching the course name
+          // Precise fallback row match
           const matchRow = rows.find(r => r.some(cell => cell.includes('AI사물인터넷') || cell.includes('임베디드')));
           if (matchRow && matchRow.length >= 4) {
             d4Value = matchRow[3]?.trim() || '';
@@ -217,15 +213,13 @@ export const ContentProvider: React.FC<{ children: ReactNode }> = ({ children })
               updatedStats[0] = { ...updatedStats[0], value: d4Value };
             }
 
-            const newContent = {
+            return {
               ...prev,
               hero: {
                 ...prev.hero,
                 stats: updatedStats
               }
             };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(newContent));
-            return newContent;
           });
         }
       } catch (err) {
