@@ -10,7 +10,7 @@ const defaultContent: SiteContent = {
     highlight: "AI사물인터넷 MCU기반\n임베디드 펌웨어 전문가로",
     description: "온 디바이스AI, 스마트팩토리, 스마트팜 등에 활용되는 Cortex-M4/Mx ARM MCU 기반 임베디드/펌웨어 실무 교육 과정입니다. 한국직업능력교육원에서 임베디드 전문가로 거듭나세요.",
     stats: [
-      { label: '교육기간', value: '26.10.28개강(6개월과정)' },
+      { label: '교육기간', value: '26.12.21개강(6개월과정)' },
       { label: '교육시간', value: '월~금 09:00~17:40' },
       { label: '수강료', value: '95~100% 국비지원' },
       { label: '수업형태', value: '오프라인 수업' },
@@ -83,13 +83,18 @@ interface ContentContextType {
 
 const ContentContext = createContext<ContentContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'site_content_v11';
+// Google Sheet URL or published CSV URL if provided.
+// Can be set via window.__GOOGLE_SHEET_URL__ or localStorage or default.
+const GOOGLE_SHEET_CSV_URL = (typeof window !== 'undefined' && (window as any).__GOOGLE_SHEET_CSV_URL__) || '';
+
+const STORAGE_KEY = 'site_content_v12';
 
 export const ContentProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [content, setContent] = useState<SiteContent>(defaultContent);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
+    // 1. Initial state from defaults / localStorage
     const savedContent = localStorage.getItem(STORAGE_KEY);
     if (savedContent) {
       try {
@@ -98,6 +103,55 @@ export const ContentProvider: React.FC<{ children: ReactNode }> = ({ children })
       } catch (e) {
         console.error("Failed to load content", e);
       }
+    }
+
+    // 2. Dynamic fetch from Google Sheet (if URL is set in localStorage or window)
+    const sheetUrl = localStorage.getItem('google_sheet_url') || GOOGLE_SHEET_CSV_URL;
+    if (sheetUrl) {
+      fetch(sheetUrl)
+        .then((res) => res.text())
+        .then((csvText) => {
+          // Parse CSV: rows and columns
+          const rows = csvText.split(/\r?\n/).map((row) =>
+            row.split(',').map((cell) => cell.trim().replace(/^"|"$/g, ''))
+          );
+          // Look for D4 (row index 3, column index 3 -> 0-based) or find by course name
+          // If row 3 has at least 4 columns (A=0, B=1, C=2, D=3):
+          let d4Value = '';
+          if (rows[3] && rows[3][3]) {
+            d4Value = rows[3][3];
+          } else {
+            // Find row containing 'AI사물인터넷'
+            const targetRow = rows.find(r => r.some(cell => cell.includes('AI사물인터넷') || cell.includes('임베디드')));
+            if (targetRow && targetRow.length >= 4) {
+              d4Value = targetRow[3] || targetRow[targetRow.length - 1];
+            }
+          }
+
+          if (d4Value) {
+            setContent((prev) => {
+              const updatedStats = [...prev.hero.stats];
+              const periodIdx = updatedStats.findIndex((s) => s.label === '교육기간');
+              if (periodIdx !== -1) {
+                updatedStats[periodIdx] = { ...updatedStats[periodIdx], value: d4Value };
+              } else {
+                updatedStats[0] = { ...updatedStats[0], value: d4Value };
+              }
+              const newContent = {
+                ...prev,
+                hero: {
+                  ...prev.hero,
+                  stats: updatedStats
+                }
+              };
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(newContent));
+              return newContent;
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn('Google Sheets live fetch error:', err);
+        });
     }
 
     setIsLoaded(true);
